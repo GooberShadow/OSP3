@@ -24,16 +24,6 @@ void handleArgs(int argc, char* argv[], int* maxChild, char** logFile, int* term
 void printIntArray(int* arr, int size);
 
 
-//TEST FUNCTION
-void* create_shared_memory(size_t size)
-{
-	int protection = PROT_READ | PROT_WRITE;
-
-	int visibility = MAP_SHARED | MAP_ANONYMOUS;
-
-	return mmap(NULL, size, protection, visibility, -1, 0);
-}
-
 //MAIN
 int main(int argc, char* argv[])
 {
