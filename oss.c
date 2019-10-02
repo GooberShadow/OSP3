@@ -5,7 +5,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-
+#include "share.h"
 
 //Globals
 enum FLAGS 
@@ -24,6 +24,16 @@ void handleArgs(int argc, char* argv[], int* maxChild, char** logFile, int* term
 void printIntArray(int* arr, int size);
 
 
+//TEST FUNCTION
+void* create_shared_memory(size_t size)
+{
+	int protection = PROT_READ | PROT_WRITE;
+
+	int visibility = MAP_SHARED | MAP_ANONYMOUS;
+
+	return mmap(NULL, size, protection, visibility, -1, 0);
+}
+
 //MAIN
 int main(int argc, char* argv[])
 {
@@ -32,6 +42,7 @@ int main(int argc, char* argv[])
 	int terminateTime = 5;
 	int i;
 	int status;
+
 
 	handleArgs(argc, argv, &maxChildren, &logFileName, &terminateTime);
 
@@ -65,8 +76,10 @@ int main(int argc, char* argv[])
 			exit(0);
 		}
 
+		//Process parent only
 		if(pid > 0)
 		{
+
 			fprintf(stderr, "onPass:%d, Parent created child process: %d\n", i, pid);
 		}
 
