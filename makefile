@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -I. -g
+CFLAGS = -I. -g -pthread
 .SUFFIXES: .c .o
 
 all: oss usrPs

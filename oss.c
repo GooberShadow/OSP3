@@ -5,6 +5,11 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/shm.h>
+#include <sys/ipc.h>
+#include <errno.h>
+#include <semaphore.h>
+
 #include "share.h"
 
 //Globals
@@ -19,45 +24,73 @@ enum FLAGS
 
 const int DEBUG = 1;
 
-key_t key = 69;
-
 //Func Prototypes
 void handleArgs(int argc, char* argv[], int* maxChild, char** logFile, int* termTime);
 void printIntArray(int* arr, int size);
-void processChild(size_t size);
+sem_t* createShmSemaphore(key_t* key, size_t* size, int* shmid);
+int* createShmMsg(key_t* key, size_t* size, int* shmid);
+int* createShmLogicalClock(key_t* key, size_t* size, int* shmid);
+void cleanupSharedMemory(int* shmid, struct shmid_ds* ctl);
 
 //MAIN
 int main(int argc, char* argv[])
 {
+	//command line args
 	int maxChildren = 5;
 	char* logFileName = "log.txt";
 	int terminateTime = 5;
-	int i;
-	int status;
-	//Shared memory vars
-	int shmflg;
-	int shmid;
-	size_t size;
-	char* shmPtr = NULL;
-	int* shmIntPtr = NULL;
-	struct shmid_ds shmid_ds;
-	int rtrn;
 
+	//Iterator
+	int i;
+
+	//Process vars
+	int status;
+	pid_t pid = 0;
+
+	//Shared memory keys
+	key_t shmSemKey = SEM_KEY;
+	key_t shmMsgKey = MSG_KEY;
+   	key_t shmClockKey = CLOCK_KEY;
+
+	//Shared memory ids
+	int shmSemID = 0;
+    	int shmMsgID = 0;
+    	int shmClockID = 0;
+	
+	//Shared memory sizes
+    	size_t shmSemSize = sizeof(sem_t);
+    	size_t shmMsgSize = 2 * sizeof(int);
+    	size_t shmClockSize = 2 * sizeof(int);	
+
+	//Shared Memory control
+    	struct shmid_ds shmSemCtl;
+    	struct shmid_ds shmMsgCtl;
+    	struct shmid_ds shmClockCtl;	
+	
+	//Shared mem pointers
+    	sem_t* semPtr = NULL;
+    	int* shmMsgPtr = NULL;
+    	int* shmClockPtr = NULL;
+
+	//Getopts
 	handleArgs(argc, argv, &maxChildren, &logFileName, &terminateTime);
+
 
 	if(DEBUG)
 	{
-		printf("maxChildren = %d\n", maxChildren);
-		printf("logFileName = %s\n", logFileName);
-		printf("terminateTime = %d\n\n", terminateTime);
-		printf("Parent before Fork: %d\n", getpid());
+		fprintf(stderr, "maxChildren = %d\n", maxChildren);
+		fprintf(stderr, "logFileName = %s\n", logFileName);
+		fprintf(stderr, "terminateTime = %d\n\n", terminateTime);
+		fprintf(stderr, "Parent before Fork: %d\n", getpid());
+		fprintf(stderr, "sem_t size: %ld\n", sizeof(sem_t));
 	}
 
-	//size will be two ints for seconds and nanosecs, and number of children
-	size = sizeof(int) + sizeof(long unsigned int) + sizeof(int) * maxChildren;
+	//Setup shared mem with semaphore
+    	semPtr = createShmSemaphore(&shmSemKey, &shmSemSize, &shmSemID);
+    	shmMsgPtr = createShmMsg(&shmMsgKey, &shmMsgSize, &shmMsgID);
+    	shmClockPtr = createShmLogicalClock(&shmClockKey, &shmClockSize, &shmClockID);
 
 	//Spawn a fan of maxChildren # of processes
-	pid_t pid = 0;
 	for(i = 1; i < maxChildren; i++)
 	{
 		pid = fork();
@@ -72,7 +105,8 @@ int main(int argc, char* argv[])
 		//process child only
 		if(pid == 0)
 		{
-			break;
+			execl("./usrPs", "usrPs", (char *) NULL);
+			exit(55);
 		}
 
 		//Process parent only
@@ -86,73 +120,32 @@ int main(int argc, char* argv[])
 
 	}
 
-	if(pid > 0)
-	{
-		//Create shared memory
-		int ossShmFlags = IPC_CREAT | IPC_EXCL | 0777;
-		shmid = shmget(key, size, ossShmFlags);
-		if(shmid < 0)
-		{
-			perror("ERROR:oss:shmget failed");
-			fprintf(stderr, "key:%d, size:%ld, flags:%d\n", key, size, ossShmFlags);
-			exit(1);
-		}
+	//WAIT FOR EACH CHILD
+	int exitedPID;
 
-		//Attach the segment
-		shmPtr = (char*)shmat(shmid, NULL, 0);
-		shmIntPtr = (int*)shmPtr;
-
-		//Test write to shared mem
-		for(i = 0; i < size / sizeof(int); ++i)
-		{
-			*shmIntPtr++ = i - 2;
-		}
-	}
-
-	sleep(2);
-
-	//CHILD
-	if(pid == 0)
-	{
-		sleep(1);
-		if(DEBUG)
-		{
-			printf("Child:%d, says hello to parent:%d\n", getpid(), getppid());
-		}
-		//SEND CHILD TO usrPs
-		char* args[] = {"./usrPs", "69", "5", NULL};
-		execv(args[0], args);
-		//processChild(size);
-		//exit(0);
-	}
 
 	for(i = 1; i < maxChildren; i++)
 	{
-		sleep(1);
-		wait(&status);
-		if(DEBUG)
-		{
-			printf("%d: exit status : %d\n", i, WEXITSTATUS(status));
-		}
+        	exitedPID = wait(&status);
+        	sem_wait(semPtr);
+        	if(DEBUG) fprintf(stderr, "Child %d -- exit status: %d\n", exitedPID, WEXITSTATUS(status));
+        	sem_post(semPtr);
 	}
 
+	//Remove shared mem
 	if(pid > 0)
 	{
-		int cmd = IPC_RMID;
-		rtrn = shmctl(shmid, cmd, &shmid_ds);
-		if(rtrn == -1)
-		{
-			perror("ERROR:oss:shmctl failed");
-			exit(1);
-		}
+		cleanupSharedMemory(&shmMsgID, &shmMsgCtl);
+        	cleanupSharedMemory(&shmClockID, &shmClockCtl);
+        	cleanupSharedMemory(&shmSemID, &shmSemCtl);
 	}
 
 	return 0;
-
 }
 
-//Functions
 
+
+//Functions
 void handleArgs(int argc, char* argv[], int* maxChild, char** logFile, int* termTime)
 {
 	int i;
@@ -198,6 +191,7 @@ void handleArgs(int argc, char* argv[], int* maxChild, char** logFile, int* term
 	}
 }
 
+//DONT NEED THIS
 void printIntArray(int* arr, int size)
 {
 	int i;
@@ -208,38 +202,95 @@ void printIntArray(int* arr, int size)
 	printf("\n");
 }
 
-void processChild(size_t size)
-{
-    key_t ckey = 69;
-    int cshmid;
-    char* cshmPtr = NULL;
-    int* cshmIntPtr = NULL;
 
-    sleep(3);
-    //Fetch the segment id
-    cshmid = shmget(ckey, size, 0777);
-	if(cshmid < 0)
+sem_t* createShmSemaphore(key_t* key, size_t* size, int* shmid) 
+{
+	int ossShmFlags = IPC_CREAT /* | IPC_EXCL  */| 0777;
+
+	//Allocate shared mem
+    	*shmid = shmget(*key, *size, ossShmFlags);
+    	if(*shmid < 0) 
 	{
-		perror("ERROR:usrPs:shmget failed");
-		fprintf(stderr, "size = %ld\n", size);
+    		perror("ERROR:oss:shmget failed(semaphore)");
+    		fprintf(stderr, "key:%d, size:%ld, flags:%d\n", *key, *size, ossShmFlags);
+        	exit(1);
+    	}
+
+	//Set pointer
+	sem_t* temp = (sem_t*)shmat(*shmid, NULL, 0);
+    	if(temp == (sem_t*) -1) 
+	{
+        	perror("ERROR:oss:shmat failed(semaphore)");
+        	exit(1);
+    	}
+
+	//Initialize sem
+	if(sem_init(temp, 1, 1) == -1)
+	{
+		perror("ERROR:oss:sem_init failed");
 		exit(1);
 	}
 
-	 cshmPtr = (char*)shmat(cshmid, 0, 0);
-   	 if(cshmPtr == (char*) -1) 
-	 {
-       	 	perror("ERROR:usrPs:shmat failed");
-       		 exit(1);
-   	 }
- 	 cshmIntPtr = (int*)cshmPtr;
+	return temp;
+}
 
-	//Read the shared memory
-	fprintf(stderr, "Child %d reads: ", getpid());
-    	int i;
-   	for(i = 0; i < size / sizeof(int); ++i) 
+int* createShmMsg(key_t* key, size_t* size, int* shmid) 
+{
+	int ossShmFlags = IPC_CREAT /* | IPC_EXCL  */| 0777;
+
+	//Allocate shared mem
+	*shmid = shmget(*key, *size, ossShmFlags);
+	if(*shmid < 0) 
 	{
-       	 	fprintf(stderr, "%d ", *cshmIntPtr++);
-   	}
-    	fprintf(stderr, "\n");
+        	perror("ERROR:oss:shmget failed(msg)");
+        	fprintf(stderr, "key:%d, size:%ld, flags:%d\n", *key, *size, ossShmFlags);
+        	exit(1);
+	}
+
+	//Set pointer
+    	int* temp = (int*)shmat(*shmid, NULL, 0);
+    	if(temp == (int*) -1) 
+	{
+        	perror("ERROR:oss:shmat failed(msg)");
+        	exit(1);
+	}
+
+	return temp;
+}
+
+int* createShmLogicalClock(key_t* key, size_t* size, int* shmid) 
+{
+    	int ossShmFlags = IPC_CREAT /* | IPC_EXCL  */| 0777;
+
+	//Allocate mem
+    	*shmid = shmget(*key, *size, ossShmFlags);
+    	if(*shmid < 0) 
+	{
+        	perror("ERROR:oss:shmget failed(clock)");
+        	fprintf(stderr, "key:%d, size:%ld, flags:%d\n", *key, *size, ossShmFlags);
+        	exit(1);
+    	}
+
+	//Set pointer
+    	int* temp = (int*)shmat(*shmid, NULL, 0);
+    	if(temp == (int*) -1) 
+	{
+        	perror("ERROR:oss:shmat failed(clock)");
+        	exit(1);
+    	}
+
+	return temp;
 
 }
+
+void cleanupSharedMemory(int* shmid, struct shmid_ds* ctl) 
+{
+    	int cmd = IPC_RMID;
+    	int rtrn = shmctl(*shmid, cmd, ctl);
+        if(rtrn == -1) 
+	{
+            	perror("ERROR:oss:shmctl failed");
+            	exit(1);
+        }
+}
+
