@@ -9,6 +9,7 @@
 #include <sys/ipc.h>
 #include <errno.h>
 #include <semaphore.h>
+#include <signal.h>
 
 #include "share.h"
 
@@ -32,9 +33,17 @@ int* createShmMsg(key_t* key, size_t* size, int* shmid);
 int* createShmLogicalClock(key_t* key, size_t* size, int* shmid);
 void cleanupSharedMemory(int* shmid, struct shmid_ds* ctl);
 
+//signals
+void sigintHandler(int sig_num)
+{
+	signal(SIGINT, sigintHandler);
+	printf("SIGNAL: SIGINT\n");
+}
+
 //MAIN
 int main(int argc, char* argv[])
 {
+	signal(SIGINT, sigintHandler);
 	//command line args
 	int maxChildren = 5;
 	char* logFileName = "log.txt";
@@ -73,8 +82,6 @@ int main(int argc, char* argv[])
     	sem_t* semPtr = NULL;
     	int* shmMsgPtr = NULL;
     	int* shmClockPtr = NULL;
-
-
 
 	//Getopts
 	handleArgs(argc, argv, &maxChildren, &logFileName, &terminateTime);
@@ -210,6 +217,7 @@ int main(int argc, char* argv[])
 			sem_post(semPtr);
 
 	}
+
 
 	//Remove shared mem
 	if(pid > 0)
