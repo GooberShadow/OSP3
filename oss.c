@@ -49,7 +49,7 @@ void cleanupSharedMemory(int* shmid, struct shmid_ds* ctl);
 
 //SIGNALS
 void interruptSignalHandler(int sig);
-void interruptTimeHandler(int sig);
+void timeSignalHandler(int sig);
 
 //MAIN
 int main(int argc, char* argv[])
@@ -109,6 +109,9 @@ int main(int argc, char* argv[])
     	shmMsgPtr = createShmMsg(&shmMsgKey, &shmMsgSize, &shmMsgID);
     	shmClockPtr = createShmLogicalClock(&shmClockKey, &shmClockSize, &shmClockID);
 
+	signal(SIGINT, interruptSignalHandler);
+	//signal(SIGALRM, timeSignalHandler);
+	//alarm(terminateTime);
 
 	//Spawn a fan of maxChildren # of processes
 	for(i = 1; i < maxChildren; i++)
@@ -139,9 +142,6 @@ int main(int argc, char* argv[])
 		}
 
 	}
-	//signal(SIGINT, interruptSignalHandler);
-	//signal(SIGALRM, interruptTimeHandler);
-	//alarm(terminateTime);
 
 	sleep(1);
 
@@ -396,7 +396,7 @@ void cleanupSharedMemory(int* shmid, struct shmid_ds* ctl)
         }
 }
 
-void signalInterruptHandler(int sig)
+void interruptSignalHandler(int sig)
 {
 	shmctl(shmMsgID, IPC_RMID, &shmMsgCtl);
 	shmctl(shmClockID, IPC_RMID, &shmClockCtl);
@@ -405,7 +405,7 @@ void signalInterruptHandler(int sig)
 	exit(0);
 }
 
-void signalTimeHandler(int sig)
+void timeSignalHandler(int sig)
 {
 	shmctl(shmMsgID, IPC_RMID, &shmMsgCtl);
 	shmctl(shmClockID, IPC_RMID, &shmClockCtl);
