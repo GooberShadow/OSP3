@@ -18,6 +18,8 @@ const int DEBUG = 1;
 sem_t* getSemaphore(key_t* key, size_t* size, int* shmid);
 int* getShmMsg(key_t* key, size_t* size, int* shmid);
 int* getShmLogicalClock(key_t* key, size_t* size, int* shmid);
+void setDeathTime(int* nanosec, int* sec, int* clockPtr);
+void criticalSection();
 
 //MAIN
 int main(int argc, char* argv[])
@@ -51,6 +53,10 @@ int main(int argc, char* argv[])
     	int* shmMsgPtr = NULL;
     	int* shmClockPtr = NULL;
 
+	//Life vars
+	int deathNanosec = 0;
+	int deathSec = 0;
+	int isInitialized = 0;
 
     	if(DEBUG) 
 	{
@@ -63,15 +69,49 @@ int main(int argc, char* argv[])
     	shmMsgPtr = getShmMsg(&shmMsgKey, &shmMsgSize, &shmMsgID);
     	shmClockPtr = getShmLogicalClock(&shmClockKey, &shmClockSize, &shmClockID);
 
-	//Test ptint
+	//Set lifetime of process
 	sem_wait(semPtr);
-	fprintf(stderr, "MSGArray: ");
-    	for(i = 0; i < shmMsgSize / sizeof(int); ++i) 
+	setDeathTime(&deathNanosec, &deathSec, shmClockPtr);
+	sem_post(semPtr);
+
+	//Critical section
+	while(1)
 	{
-        	fprintf(stderr, "%d", *shmMsgPtr++);
-    	}
-    	fprintf(stderr, "\n");
-    	sem_post(semPtr); //unlock
+		sleep(1);
+
+		//lock
+		sem_wait(semPtr); 
+
+		//Read the clock
+		int* tempClockPtr = shmClockPtr;
+        	int clockNano = *tempClockPtr;
+        	int clockSec = *(tempClockPtr + 1);
+
+		//Check Message status
+		int isMessage = 0;
+        	int* tempMsgPtr = shmMsgPtr;
+        	if(*tempMsgPtr != 0 || *(tempMsgPtr + 1) != 0) 
+		{
+        		isMessage = 1;
+        	}
+
+		//Exit, post, and release if it is time
+        	if(clockSec > deathSec || (clockSec >= deathSec && clockNano >= deathNanosec)) 
+		{
+            		if(isMessage == 0) 
+			{
+				*shmMsgPtr = deathNanosec;
+				*(shmMsgPtr + 1) = deathSec;
+
+				sem_post(semPtr);
+				exit(50);
+
+			}
+		}
+		
+		//unlock
+		sem_post(semPtr); 
+	}
 
     	return 100;
 }
@@ -141,3 +181,21 @@ sem_t* getSemaphore(key_t* key, size_t* size, int* shmid)
 
 }
 
+void setDeathTime(int* nanosec, int* sec, int* clockPtr)
+{
+	int* temp = clockPtr;
+
+	//Read shared memory clock
+	*nanosec = *temp;
+	*sec = *(temp + 1);
+
+	//Randomly generate duration
+	*nanosec += 1000;
+
+	//Rollover
+	if(*nanosec >= 1000000000)
+	{
+		*nanosec = 0;
+		*sec += 1;
+	}
+}

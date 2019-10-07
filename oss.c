@@ -120,17 +120,67 @@ int main(int argc, char* argv[])
 
 	}
 
+	sleep(1);
+
 	//WAIT FOR EACH CHILD
 	int exitedPID;
+	while(1)
+	{
+		sleep(1);
+		//lock
+		sem_wait(semPtr);
 
+		//increment the clock
+		int* tempClockPtr = shmClockPtr;
+        	*tempClockPtr += 100000000;
+        	if(*tempClockPtr >= 1000000000) 
+		{
+            		*(tempClockPtr + 1) += 1;
+            		*tempClockPtr = 0;
+        	}
 
-	for(i = 1; i < maxChildren; i++)
+		//Check Message status
+        	int isMessage = 0;
+        	int* tempMsgPtr = shmMsgPtr;
+        	fprintf(stderr, "OSS: msgNano = %d, msgSec = %d\n",*tempMsgPtr,*(tempMsgPtr + 1) );
+        	
+		if(*tempMsgPtr != 0 || *(tempMsgPtr + 1) != 0) 
+		{
+            		fprintf(stderr, "OSS found a message\n");
+            		isMessage = 1;
+        	}
+
+        	if(isMessage) 
+		{
+            		exitedPID = wait(&status);
+			//Reset msg
+			*tempMsgPtr = 0;
+			*(tempMsgPtr + 1) = 0;
+
+			if(DEBUG)
+			{
+				fprintf(stderr, "Child %d -- exit status: %d\n", exitedPID, WEXITSTATUS(status));
+
+			}
+		}
+			
+			//unlock
+			sem_post(semPtr);
+
+	}
+	/*TEST CODE FOR WHILE LOOP
+	while(1)
+	{
+		int* tempClockPtr = shmClockPtr
+	}
+	*/
+	/*for(i = 1; i < maxChildren; i++)
 	{
         	exitedPID = wait(&status);
         	sem_wait(semPtr);
         	if(DEBUG) fprintf(stderr, "Child %d -- exit status: %d\n", exitedPID, WEXITSTATUS(status));
         	sem_post(semPtr);
-	}
+	}*/
 
 	//Remove shared mem
 	if(pid > 0)
