@@ -22,7 +22,7 @@ enum FLAGS
 	TOTAL_FLAGS
 };
 
-const int DEBUG = 1;
+const int DEBUG = 0;
 
 //Func Prototypes
 void handleArgs(int argc, char* argv[], int* maxChild, char** logFile, int* termTime);
@@ -74,8 +74,16 @@ int main(int argc, char* argv[])
     	int* shmMsgPtr = NULL;
     	int* shmClockPtr = NULL;
 
+
+
 	//Getopts
 	handleArgs(argc, argv, &maxChildren, &logFileName, &terminateTime);
+	
+	//File handling
+	FILE* logFileHandler = NULL;
+
+	logFileHandler = fopen(logFileName, "w+");
+	fclose(logFileHandler);
 
 
 	if(DEBUG)
@@ -134,6 +142,7 @@ int main(int argc, char* argv[])
 
 		//increment the clock
 		int* tempClockPtr = shmClockPtr;
+		//Tickrate
         	*tempClockPtr += 1000;
         	if(*tempClockPtr >= 1000000000) 
 		{
@@ -148,14 +157,21 @@ int main(int argc, char* argv[])
         	
 		if(*tempMsgPtr != 0 || *(tempMsgPtr + 1) != 0) 
 		{
-            		fprintf(stderr, "OSS found a message\n");
+            		//fprintf(stderr, "OSS found a message\n");
             		isMessage = 1;
         	}
 
         	if(isMessage) 
 		{
             		exitedPID = wait(&status);
+
+			logFileHandler = fopen(logFileName, "a");
+			fprintf(logFileHandler, 
+			"Master: Child %d is terminating at my time %ds.%dns because it reached %ds.%dns in the child process\n", exitedPID, *(shmClockPtr + 1), *shmClockPtr, *(shmMsgPtr + 1), *shmMsgPtr);
+
+			fclose(logFileHandler);
 			totalProcessesWaitedOn++;
+			
 
 			//Reset msg
 			*tempMsgPtr = 0;
@@ -251,6 +267,15 @@ void handleArgs(int argc, char* argv[], int* maxChild, char** logFile, int* term
 				exit(1);
 				break;
 		}
+	}
+	if(flagArray[HELP_FLAG])
+	{
+		printf("HELP MESSAGE:\n");
+		printf("-h for help message:\n");
+		printf("-s x for  setting max child processes:\n");
+		printf("-l filename for log file used:\n");
+		printf("-t z for time in real seconds for termination:\n");
+		exit(0);
 	}
 }
 

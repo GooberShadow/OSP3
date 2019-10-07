@@ -13,7 +13,7 @@
 
 #include "share.h"
 
-const int DEBUG = 1;
+const int DEBUG = 0;
 
 //Function prototypes
 sem_t* getSemaphore(key_t* key, size_t* size, int* shmid);
