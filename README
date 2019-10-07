@@ -1,2 +1,8 @@
-My code deletes all the shared memory!!! wahooooo. its successful!!!
-
+My code deletes all the shared memory upon completion!!!! wahooooo. its successful!!!
+unfortunately, It does not have signal handling. I cant figure out how to do it
+So upon Ctrl c or early termination, there will be things that need to be cleared.
+Also Do not try and perform -s with anything less than 5 as it will cause things to remain attached and that is a problem to deal with.
+Upon any leftover attachments, perform the command ps -e | grep "usrPs" and
+ps -e | grep "oss" which will find the numbers you need to kill. then type
+kill -9 and after the -9 put the # of the attachment. After doing so execute resetMem.sh
+I built a exe called resetMem.sh to clear mem problems. should clear most problems

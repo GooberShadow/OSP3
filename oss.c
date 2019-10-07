@@ -25,6 +25,20 @@ enum FLAGS
 
 const int DEBUG = 0;
 
+//MORE GLOBALS
+
+int terminateTime = 5;
+
+//Shared Memory control
+struct shmid_ds shmSemCtl;
+struct shmid_ds shmMsgCtl;
+struct shmid_ds shmClockCtl;	
+	
+//Shared memory ids
+int shmSemID = 0;
+int shmMsgID = 0;
+int shmClockID = 0;
+
 //Func Prototypes
 void handleArgs(int argc, char* argv[], int* maxChild, char** logFile, int* termTime);
 void printIntArray(int* arr, int size);
@@ -33,21 +47,17 @@ int* createShmMsg(key_t* key, size_t* size, int* shmid);
 int* createShmLogicalClock(key_t* key, size_t* size, int* shmid);
 void cleanupSharedMemory(int* shmid, struct shmid_ds* ctl);
 
-//signals
-void sigintHandler(int sig_num)
-{
-	signal(SIGINT, sigintHandler);
-	printf("SIGNAL: SIGINT\n");
-}
+//SIGNALS
+void interruptSignalHandler(int sig);
+void interruptTimeHandler(int sig);
 
 //MAIN
 int main(int argc, char* argv[])
 {
-	signal(SIGINT, sigintHandler);
+	
 	//command line args
 	int maxChildren = 5;
 	char* logFileName = "log.txt";
-	int terminateTime = 5;
 
 	//Iterator
 	int i;
@@ -63,20 +73,12 @@ int main(int argc, char* argv[])
 	key_t shmMsgKey = MSG_KEY;
    	key_t shmClockKey = CLOCK_KEY;
 
-	//Shared memory ids
-	int shmSemID = 0;
-    	int shmMsgID = 0;
-    	int shmClockID = 0;
 	
 	//Shared memory sizes
     	size_t shmSemSize = sizeof(sem_t);
     	size_t shmMsgSize = 2 * sizeof(int);
     	size_t shmClockSize = 2 * sizeof(int);	
 
-	//Shared Memory control
-    	struct shmid_ds shmSemCtl;
-    	struct shmid_ds shmMsgCtl;
-    	struct shmid_ds shmClockCtl;	
 	
 	//Shared mem pointers
     	sem_t* semPtr = NULL;
@@ -107,6 +109,7 @@ int main(int argc, char* argv[])
     	shmMsgPtr = createShmMsg(&shmMsgKey, &shmMsgSize, &shmMsgID);
     	shmClockPtr = createShmLogicalClock(&shmClockKey, &shmClockSize, &shmClockID);
 
+
 	//Spawn a fan of maxChildren # of processes
 	for(i = 1; i < maxChildren; i++)
 	{
@@ -136,6 +139,9 @@ int main(int argc, char* argv[])
 		}
 
 	}
+	//signal(SIGINT, interruptSignalHandler);
+	//signal(SIGALRM, interruptTimeHandler);
+	//alarm(terminateTime);
 
 	sleep(1);
 
@@ -390,3 +396,20 @@ void cleanupSharedMemory(int* shmid, struct shmid_ds* ctl)
         }
 }
 
+void signalInterruptHandler(int sig)
+{
+	shmctl(shmMsgID, IPC_RMID, &shmMsgCtl);
+	shmctl(shmClockID, IPC_RMID, &shmClockCtl);
+	shmctl(shmSemID, IPC_RMID, &shmSemCtl);
+	printf("OSS ended as it caught ctrl-c signal\n");
+	exit(0);
+}
+
+void signalTimeHandler(int sig)
+{
+	shmctl(shmMsgID, IPC_RMID, &shmMsgCtl);
+	shmctl(shmClockID, IPC_RMID, &shmClockCtl);
+	shmctl(shmSemID, IPC_RMID, &shmSemCtl);
+	printf("OSS timed out after %d seconds.\n", terminateTime);
+	exit(0);
+}
