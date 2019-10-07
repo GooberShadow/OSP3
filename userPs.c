@@ -15,6 +15,11 @@
 
 const int DEBUG = 0;
 
+//Shared memory ids
+int shmSemID = 0;
+int shmMsgID = 0;
+int shmClockID = 0;
+
 //Function prototypes
 sem_t* getSemaphore(key_t* key, size_t* size, int* shmid);
 int* getShmMsg(key_t* key, size_t* size, int* shmid);
@@ -22,9 +27,14 @@ int* getShmLogicalClock(key_t* key, size_t* size, int* shmid);
 void setDeathTime(int* nanosec, int* sec, int* clockPtr);
 void criticalSection();
 
+//Signals
+void timeSignalHandler(int sig);
+
 //MAIN
 int main(int argc, char* argv[])
 {
+
+	signal(SIGQUIT, timeSignalHandler);
 	//Seed the rand
 	srand(time(NULL));
 
@@ -36,10 +46,6 @@ int main(int argc, char* argv[])
     	key_t shmMsgKey = MSG_KEY;
     	key_t shmClockKey = CLOCK_KEY;
 
-	//Shared memory ids
-    	int shmSemID = 0;
-    	int shmMsgID = 0;
-    	int shmClockID = 0;
 
 	//Shared Memory size
     	size_t shmSemSize = sizeof(sem_t);
@@ -207,4 +213,15 @@ void setDeathTime(int* nanosec, int* sec, int* clockPtr)
 		*nanosec = 0;
 		*sec += 1;
 	}
+}
+
+void timeSignalHandler(int sig)
+{
+	shmdt(&shmMsgID);
+	shmdt(&shmClockID);
+	shmdt(&shmSemID);
+
+	exit(33);
+	
+
 }

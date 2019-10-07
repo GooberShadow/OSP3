@@ -29,6 +29,10 @@ const int DEBUG = 0;
 
 int terminateTime = 5;
 
+//Dynamic array
+int* pidArray;
+int pidArraySize = 0;
+
 //Shared Memory control
 struct shmid_ds shmSemCtl;
 struct shmid_ds shmMsgCtl;
@@ -110,13 +114,20 @@ int main(int argc, char* argv[])
     	shmClockPtr = createShmLogicalClock(&shmClockKey, &shmClockSize, &shmClockID);
 
 	signal(SIGINT, interruptSignalHandler);
-	//signal(SIGALRM, timeSignalHandler);
-	//alarm(terminateTime);
+	signal(SIGALRM, timeSignalHandler);
 
 	//Spawn a fan of maxChildren # of processes
 	for(i = 1; i < maxChildren; i++)
 	{
 		pid = fork();
+
+		//Store child into array
+		if(pid > 0)
+		{
+			pidArraySize++;
+			pidArray = realloc(pidArray, pidArraySize);
+			pidArray[pidArraySize - 1] = pid;
+		}
 
 		//fork error
 		if(pid < 0)
@@ -143,7 +154,10 @@ int main(int argc, char* argv[])
 
 	}
 
-	sleep(1);
+	//ALARM
+	alarm(terminateTime);
+
+	//sleep(1);
 
 	//WAIT FOR EACH CHILD
 	int exitedPID;
@@ -178,6 +192,18 @@ int main(int argc, char* argv[])
 		{
             		exitedPID = wait(&status);
 
+			//Array stuff
+			int deadProcessIndex = -1;
+			for( i = 0; i < pidArraySize; ++i)
+			{
+				if(exitedPID == pidArray[i])
+				{
+					deadProcessIndex = i;
+					pidArray[i] = 0;
+					break;
+				}
+			}
+
 			logFileHandler = fopen(logFileName, "a");
 			fprintf(logFileHandler, 
 			"Master: Child %d is terminating at my time %ds.%dns because it reached %ds.%dns in the child process\n", exitedPID, *(shmClockPtr + 1), *shmClockPtr, *(shmMsgPtr + 1), *shmMsgPtr);
@@ -206,6 +232,8 @@ int main(int argc, char* argv[])
 				{
 					execl("./usrPs", "usrPs", (char *) NULL);
 				}
+				
+				pidArray[deadProcessIndex] = newProcessId;
 			}
 			
 		}
@@ -232,6 +260,8 @@ int main(int argc, char* argv[])
         	cleanupSharedMemory(&shmClockID, &shmClockCtl);
         	cleanupSharedMemory(&shmSemID, &shmSemCtl);
 	}
+
+	free(pidArray);
 
 	return 0;
 }
@@ -402,14 +432,30 @@ void interruptSignalHandler(int sig)
 	shmctl(shmClockID, IPC_RMID, &shmClockCtl);
 	shmctl(shmSemID, IPC_RMID, &shmSemCtl);
 	printf("OSS ended as it caught ctrl-c signal\n");
+
+	free(pidArray);
+
 	exit(0);
 }
 
 void timeSignalHandler(int sig)
 {
+	int i = 0;
+	
 	shmctl(shmMsgID, IPC_RMID, &shmMsgCtl);
 	shmctl(shmClockID, IPC_RMID, &shmClockCtl);
 	shmctl(shmSemID, IPC_RMID, &shmSemCtl);
 	printf("OSS timed out after %d seconds.\n", terminateTime);
+	
+	for(i = 0; i < pidArraySize; ++i)
+	{
+		if(pidArray[i] != 0)
+		{
+			kill(pidArray[i], SIGQUIT);
+		}
+	}
+
+	free(pidArray);
+
 	exit(0);
 }
