@@ -45,6 +45,8 @@ int main(int argc, char* argv[])
 
 	//Process vars
 	int status;
+	int totalProcesses = maxChildren - 1;
+	int totalProcessesWaitedOn = 0;
 	pid_t pid = 0;
 
 	//Shared memory keys
@@ -126,13 +128,13 @@ int main(int argc, char* argv[])
 	int exitedPID;
 	while(1)
 	{
-		sleep(1);
+		//sleep(1);
 		//lock
 		sem_wait(semPtr);
 
 		//increment the clock
 		int* tempClockPtr = shmClockPtr;
-        	*tempClockPtr += 100000000;
+        	*tempClockPtr += 1000;
         	if(*tempClockPtr >= 1000000000) 
 		{
             		*(tempClockPtr + 1) += 1;
@@ -142,7 +144,7 @@ int main(int argc, char* argv[])
 		//Check Message status
         	int isMessage = 0;
         	int* tempMsgPtr = shmMsgPtr;
-        	fprintf(stderr, "OSS: msgNano = %d, msgSec = %d\n",*tempMsgPtr,*(tempMsgPtr + 1) );
+        	//fprintf(stderr, "OSS: msgNano = %d, msgSec = %d\n",*tempMsgPtr,*(tempMsgPtr + 1) );
         	
 		if(*tempMsgPtr != 0 || *(tempMsgPtr + 1) != 0) 
 		{
@@ -153,6 +155,8 @@ int main(int argc, char* argv[])
         	if(isMessage) 
 		{
             		exitedPID = wait(&status);
+			totalProcessesWaitedOn++;
+
 			//Reset msg
 			*tempMsgPtr = 0;
 			*(tempMsgPtr + 1) = 0;
@@ -162,25 +166,34 @@ int main(int argc, char* argv[])
 				fprintf(stderr, "Child %d -- exit status: %d\n", exitedPID, WEXITSTATUS(status));
 
 			}
+
+			//Spawn new children as old ones end
+			int newProcessId;
+			if(totalProcesses < 100)
+			{
+				totalProcesses++;
+				newProcessId = fork();
+				if(newProcessId == 0)
+				{
+					execl("./usrPs", "usrPs", (char *) NULL);
+				}
+			}
+			
 		}
+
+		if(!isMessage && totalProcesses >= 100 && totalProcessesWaitedOn == totalProcesses)
+		{
+			sem_post(semPtr);
+			break;
+		}
+
+
+		
 			
 			//unlock
 			sem_post(semPtr);
 
 	}
-	/*TEST CODE FOR WHILE LOOP
-	while(1)
-	{
-		int* tempClockPtr = shmClockPtr
-	}
-	*/
-	/*for(i = 1; i < maxChildren; i++)
-	{
-        	exitedPID = wait(&status);
-        	sem_wait(semPtr);
-        	if(DEBUG) fprintf(stderr, "Child %d -- exit status: %d\n", exitedPID, WEXITSTATUS(status));
-        	sem_post(semPtr);
-	}*/
 
 	//Remove shared mem
 	if(pid > 0)

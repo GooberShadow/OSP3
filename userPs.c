@@ -9,6 +9,7 @@
 #include <sys/shm.h>
 #include <sys/ipc.h>
 #include <semaphore.h>
+#include <time.h>
 
 #include "share.h"
 
@@ -24,6 +25,9 @@ void criticalSection();
 //MAIN
 int main(int argc, char* argv[])
 {
+	//Seed the rand
+	srand(time(NULL));
+
 	//Iterator
 	int i;
 
@@ -77,7 +81,7 @@ int main(int argc, char* argv[])
 	//Critical section
 	while(1)
 	{
-		sleep(1);
+		//sleep(1);
 
 		//lock
 		sem_wait(semPtr); 
@@ -102,6 +106,11 @@ int main(int argc, char* argv[])
 			{
 				*shmMsgPtr = deathNanosec;
 				*(shmMsgPtr + 1) = deathSec;
+
+				if(DEBUG)
+				{
+					fprintf(stderr, "nano=%d, sec=%d\n", clockNano, clockSec);
+				}
 
 				sem_post(semPtr);
 				exit(50);
@@ -190,7 +199,7 @@ void setDeathTime(int* nanosec, int* sec, int* clockPtr)
 	*sec = *(temp + 1);
 
 	//Randomly generate duration
-	*nanosec += 1000;
+	*nanosec += rand() % 1000000;
 
 	//Rollover
 	if(*nanosec >= 1000000000)
