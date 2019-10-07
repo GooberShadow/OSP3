@@ -1,10 +1,4 @@
 My code deletes all the shared memory upon completion!!!! wahooooo. its successful!!!
-unfortunately, It does not have time in real seconds signal handling. So -t does not function.
-and there the real seconds timeout does not work because I could not figure out how to clear things like shared mem and processes correctly with that timeout signal.
-Also Do not try and perform -s with anything less than 5 as it will cause things to remain attached and that is a problem to deal with.
-Upon any leftover attachments, perform the command ps -e | grep "usrPs" and
-ps -e | grep "oss" which will find the numbers you need to kill. then type
-kill -9 and after the -9 put the # of the attachment. After doing so execute resetMem.sh
-I built a exe called resetMem.sh to clear mem problems. should clear most problems
-This is my project. its very close to perfect but not quite due to the signal handling with the real seconds timeout and the shared memory and multiple processes.
-However, ctrl-c should work most of the time as I built a signal handler for that
+I have signal handlers for ctrl c and timeouts.
+Thank you for looking at my project. I am proud of it. I hope you enjoy!
+-Benjamin Kehe
